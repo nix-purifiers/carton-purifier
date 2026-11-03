@@ -1,0 +1,10 @@
+use strict;
+use warnings;
+use Test::More;
+use Test::Fatal;
+use Purifier::Example;
+is(Purifier::Example::answer(),42,'application answer');
+is(JSON::MaybeXS::JSON(),'Cpanel::JSON::XS','locked XS backend');
+is(JSON::MaybeXS::decode_json(Purifier::Example::serialized())->{answer},42,'native JSON round trip');
+is(exception { Purifier::Example::serialized() },undef,'transitive test dependency');
+done_testing;

@@ -1,0 +1,135 @@
+{
+  "distributions": [
+    {
+      "name": "JSON-MaybeXS-1.004008",
+      "pathname": "E/ET/ETHER/JSON-MaybeXS-1.004008.tar.gz",
+      "provides": {
+        "JSON::MaybeXS": {
+          "version": "1.004008"
+        }
+      },
+      "requirements": {
+        "Carp": "0",
+        "Cpanel::JSON::XS": "4.38",
+        "ExtUtils::MakeMaker": "0",
+        "JSON::PP": "2.27300",
+        "Scalar::Util": "0",
+        "perl": "5.006"
+      }
+    },
+    {
+      "name": "Try-Tiny-0.32",
+      "pathname": "E/ET/ETHER/Try-Tiny-0.32.tar.gz",
+      "provides": {
+        "Try::Tiny": {
+          "version": "0.32"
+        }
+      },
+      "requirements": {
+        "Carp": "0",
+        "Exporter": "5.57",
+        "ExtUtils::MakeMaker": "0",
+        "constant": "0",
+        "perl": "5.006",
+        "strict": "0",
+        "warnings": "0"
+      }
+    },
+    {
+      "name": "Test-Fatal-0.019",
+      "pathname": "R/RJ/RJBS/Test-Fatal-0.019.tar.gz",
+      "provides": {
+        "Test::Fatal": {
+          "version": "0.019"
+        }
+      },
+      "requirements": {
+        "Carp": "0",
+        "Exporter": "5.57",
+        "ExtUtils::MakeMaker": "6.78",
+        "Test::Builder": "0",
+        "Try::Tiny": "0.07",
+        "strict": "0",
+        "warnings": "0"
+      }
+    },
+    {
+      "name": "Cpanel-JSON-XS-4.80",
+      "pathname": "R/RU/RURBAN/Cpanel-JSON-XS-4.80.tar.gz",
+      "provides": {
+        "Cpanel::JSON::XS": {
+          "version": "4.80"
+        },
+        "Cpanel::JSON::XS::Boolean": {
+          "version": "4.80"
+        },
+        "Cpanel::JSON::XS::Type": {
+          "version": "4.80"
+        }
+      },
+      "requirements": {
+        "Carp": "0",
+        "Config": "0",
+        "Encode": "1.9801",
+        "Exporter": "0",
+        "ExtUtils::MakeMaker": "0",
+        "Pod::Text": "2.08",
+        "XSLoader": "0",
+        "overload": "0",
+        "strict": "0",
+        "warnings": "0"
+      }
+    }
+  ],
+  "entries": [
+    {
+      "hash": "sha256-zTk3r6eIMfgKKtWrq2xRuegvykwx5YVuogjVmNtdyGc=",
+      "mirrors": [
+        "https://backpan.perl.org/authors/id/E/ET/ETHER/JSON-MaybeXS-1.004008.tar.gz"
+      ],
+      "path": "authors/id/E/ET/ETHER/JSON-MaybeXS-1.004008.tar.gz",
+      "url": "https://cpan.metacpan.org/authors/id/E/ET/ETHER/JSON-MaybeXS-1.004008.tar.gz"
+    },
+    {
+      "hash": "sha256-7y1sqwutGOOrHE5hJcxfaVx+RZiZ9RJFHI+j74P6f8A=",
+      "mirrors": [
+        "https://backpan.perl.org/authors/id/E/ET/ETHER/Try-Tiny-0.32.tar.gz"
+      ],
+      "path": "authors/id/E/ET/ETHER/Try-Tiny-0.32.tar.gz",
+      "url": "https://cpan.metacpan.org/authors/id/E/ET/ETHER/Try-Tiny-0.32.tar.gz"
+    },
+    {
+      "hash": "sha256-2Pa2yHuzmafWDClalKS3QahbI4ic/Wty8f9i8MVc9ws=",
+      "mirrors": [
+        "https://backpan.perl.org/authors/id/R/RJ/RJBS/Test-Fatal-0.019.tar.gz"
+      ],
+      "path": "authors/id/R/RJ/RJBS/Test-Fatal-0.019.tar.gz",
+      "url": "https://cpan.metacpan.org/authors/id/R/RJ/RJBS/Test-Fatal-0.019.tar.gz"
+    },
+    {
+      "hash": "sha256-CAwSU3epKmCESuydRTKDbKFEcDmG4xmMyjgjrXkJqiU=",
+      "mirrors": [
+        "https://backpan.perl.org/authors/id/R/RU/RURBAN/Cpanel-JSON-XS-4.80.tar.gz"
+      ],
+      "path": "authors/id/R/RU/RURBAN/Cpanel-JSON-XS-4.80.tar.gz",
+      "url": "https://cpan.metacpan.org/authors/id/R/RU/RURBAN/Cpanel-JSON-XS-4.80.tar.gz"
+    }
+  ],
+  "inputs": {
+    "cpanfile": {
+      "content": "requires 'JSON::MaybeXS', '== 1.004008';\nrequires 'Cpanel::JSON::XS';\non 'test' => sub { requires 'Test::Fatal', '0.017'; };\n",
+      "sha256": "9aa072c12dae2248009375945febdff8f75571cf102f1a089e6659c15c3894f0"
+    }
+  },
+  "purifier": "carton",
+  "schemaVersion": 1,
+  "snapshot": {
+    "sha256": "fdd0b2b3c2aab2df9813d3f2318b55d20e10489744e02258ae5870805603190b"
+  },
+  "toolVersions": {
+    "carton": "1.0.35",
+    "gcc": "16.2.0",
+    "perl": "5.42.3",
+    "sdk": "44dc9fde77fbefd19e40b43b0e7c3de32a5298a5ce500cac22454f713b4254c9"
+  }
+}

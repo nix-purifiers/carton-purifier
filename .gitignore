@@ -1,0 +1,13 @@
+/result*
+/cli-result
+/environment-result
+*.log
+__pycache__/
+*.pyc
+.carton-purifier/
+local/
+blib/
+Makefile
+MYMETA.*
+**/vendor/cache/
+**/vendor/bin/

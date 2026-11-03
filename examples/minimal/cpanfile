@@ -1,0 +1,3 @@
+requires 'JSON::MaybeXS', '== 1.004008';
+requires 'Cpanel::JSON::XS';
+on 'test' => sub { requires 'Test::Fatal', '0.017'; };
