@@ -57,12 +57,12 @@ runCommand "purified-carton-environment"
       export HOME="$TMPDIR/home" PERL_CPANM_HOME="$TMPDIR/cpanm"
       export PERL_CARTON_PATH="$out/local" PERL_CARTON_MIRROR="file://$out/vendor/cache"
       export SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt
-      python3 ${../carton_purifier/build.py} ${manifest} ${snapshot} ${sources} "$PWD/work" "$out" ${metadataPerl}/bin/perl ${../carton_purifier/snapshot.pl}
+      python3 ${../../carton_purifier/build.py} ${manifest} ${snapshot} ${sources} "$PWD/work" "$out" ${metadataPerl}/bin/perl ${../../carton_purifier/snapshot.pl}
       cd work
       carton install --deployment --cached || { tail -c 9000 "$PERL_CPANM_HOME"/work/*/build.log; exit 1; }
-      ${metadataPerl}/bin/perl ${../carton_purifier/snapshot.pl} ${snapshot} "$out/local" "$PWD/cpanfile" > "$TMPDIR/actual.json"
-    python3 ${../carton_purifier/check-installed.py} ${manifest} "$TMPDIR/actual.json"
-    python3 ${../carton_purifier/normalize.py} "$out"
+      ${metadataPerl}/bin/perl ${../../carton_purifier/snapshot.pl} ${snapshot} "$out/local" "$PWD/cpanfile" > "$TMPDIR/actual.json"
+    python3 ${../../carton_purifier/check-installed.py} ${manifest} "$TMPDIR/actual.json"
+    python3 ${../../carton_purifier/normalize.py} "$out"
       cp ${snapshot} "$out/cpanfile.snapshot"
       cp ${manifest} "$out/capture.json"
       ln -s ${sources} "$out/sources"

@@ -20,15 +20,15 @@
       forAll = nixpkgs.lib.genAttrs systems;
       overlay = final: prev: {
         carton-purifier = final.lib.makeScope final.newScope (scope: {
-          nativeCarton = scope.callPackage ./nix/carton.nix { };
+          nativeCarton = scope.callPackage ./pkgs/build-carton-project/carton.nix { };
           metadataPerl = final.perl.withPackages (_: [ scope.nativeCarton ]);
-          toolchain = scope.callPackage ./nix/toolchain.nix { };
-          sdkVersion = import ./nix/sdk-version.nix { nixpkgsSrc = nixpkgs; };
-          cli = scope.callPackage ./nix/cli.nix {
+          toolchain = scope.callPackage ./pkgs/build-carton-project/toolchain.nix { };
+          sdkVersion = import ./pkgs/build-carton-project/sdk-version.nix { nixpkgsSrc = nixpkgs; };
+          cli = scope.callPackage ./pkgs/cli/default.nix {
             nixpkgsSrc = nixpkgs;
             purifierSrc = purifier;
           };
-          buildCartonProject = scope.callPackage ./nix/build-project.nix {
+          buildCartonProject = scope.callPackage ./pkgs/build-carton-project/default.nix {
             purifier = import (purifier + "/nix/lib") { inherit (final) lib; };
           };
         });
@@ -48,7 +48,7 @@
         native = (pkgsFor system).carton-purifier.nativeCarton;
         sdk = (pkgsFor system).carton-purifier.toolchain;
       });
-      lib.carton-purifier.readLock = import ./nix/read-lock.nix { lib = nixpkgs.lib; };
+      lib.carton-purifier = (nixpkgs.lib.extend (import ./lib-overlays/default)).carton-purifier;
       apps = forAll (system: {
         default = {
           type = "app";
