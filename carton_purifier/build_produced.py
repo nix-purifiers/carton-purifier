@@ -26,6 +26,7 @@ def build(spec_path, output_path):
         raise ValueError('original selected application SDK changed')
     output = Path(output_path)
     output.mkdir()
+    (output / 'profile.json').write_bytes(canonical(profile) + b'\n')
     scratch = Path(os.environ['TMPDIR'])
     project = scratch / 'project'
     project.mkdir()

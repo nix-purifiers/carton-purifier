@@ -38,5 +38,6 @@ runCommand "carton-verified-produced-profile" {
   passthru = { inherit declaration tools; };
 } ''
   mkdir "$out"
+  cp "$requestJSONPath" "$out/declaration.json"
   ${python3}/bin/python3 -B ${tools}/perl_profile.py "$requestJSONPath" "$out/profile.json"
 ''

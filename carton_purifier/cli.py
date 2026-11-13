@@ -26,6 +26,9 @@ def discover(start):
 
 def validate(root, companion, snapshot):
     data = json.loads(companion.read_text())
+    if data.get("schemaVersion") == 2:
+        from .produced_cli import validate as validate_produced
+        return validate_produced(root, companion, snapshot, data)
     if data.get("schemaVersion") != 1 or data.get("purifier") != "carton":
         raise ValueError("unsupported lock format; run carton-purifier lock")
     if digest(snapshot.read_bytes()) != data["snapshot"]["sha256"]:
@@ -42,8 +45,11 @@ def validate(root, companion, snapshot):
 
 
 def realize(root, companion, snapshot, target="environment"):
+    produced = json.loads(companion.read_text()).get("schemaVersion") == 2
+    if produced:
+        from .produced_cli import command
     result = run(
-        [
+        command(root, companion, snapshot, target) if produced else [
             "nix",
             "build",
             "--impure",
@@ -90,9 +96,13 @@ def realize(root, companion, snapshot, target="environment"):
 def activated(root, companion, snapshot):
     validate(root, companion, snapshot)
     environment = realize(root, companion, snapshot)
-    return activate(
+    env = activate(
         root, environment, companion, snapshot, os.environ[PREFIX + "WRAPPER_BIN"]
     )
+    if json.loads(companion.read_text()).get("schemaVersion") == 2:
+        from .produced_cli import activate as activate_produced
+        env = activate_produced(env, environment)
+    return env
 
 
 def main():
@@ -162,6 +172,11 @@ def main():
                     "locked cpanfile selection is managed by carton-purifier"
                 )
         env = activated(root, companion, snapshot)
+        if PREFIX + "PRODUCED_ENVIRONMENT" in env:
+            if opts.tool == "carton":
+                native = str(Path(env[PREFIX + "PRODUCED_ENVIRONMENT"]) / "bin/carton")
+            elif opts.tool == "perl":
+                native = env[PREFIX + "PRODUCED_PERL"]
         os.execve(native, [opts.tool, *args], env)
     if not args:
         parser.error("choose lock, prefetch, shell, release, or publish")
@@ -170,6 +185,8 @@ def main():
         lock_parser = argparse.ArgumentParser()
         lock_parser.add_argument("--input", action="append")
         lock_parser.add_argument("--update", action="store_true")
+        lock_parser.add_argument("--dependency", action="append", help="Nix flake output supplying a Perl projection; repeat for additional dependencies")
+        lock_parser.add_argument("--without", action="append")
         lock_opts = lock_parser.parse_args(rest)
         inputs = lock_opts.input
         if inputs is None:
@@ -178,6 +195,13 @@ def main():
                 if companion.exists()
                 else []
             )
+        if lock_opts.dependency is not None or (companion.exists() and json.loads(companion.read_text()).get("schemaVersion") == 2):
+            from .produced_cli import lock as lock_produced
+            lock_produced(root, companion, snapshot, inputs, lock_opts.dependency,
+                          lock_opts.without, lock_opts.update)
+            return
+        if lock_opts.without is not None:
+            raise ValueError("--without requires produced Perl dependency capture")
         capture(
             root,
             companion,

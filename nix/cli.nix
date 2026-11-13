@@ -16,7 +16,13 @@
   cacert,
   nixpkgsSrc,
   purifierSrc,
+  callPackage,
 }:
+let
+  owningProfile = (callPackage ./perl-produced-profile.nix {
+    purifier = import (purifierSrc + "/nix/lib") { inherit lib; };
+  }) { dependencies = [ ]; applicationPerl = perl; };
+in
 stdenvNoCC.mkDerivation {
   pname = "carton-purifier";
   version = "0.1.0";
@@ -28,6 +34,14 @@ stdenvNoCC.mkDerivation {
     cp -r carton_purifier nix "$out/lib/carton-purifier/"
     install -m755 bin/carton-purifier "$out/bin/carton-purifier"
     substituteInPlace "$out/lib/carton-purifier/nix/realize.nix" \
+      --replace-fail '@nixpkgs@' '${nixpkgsSrc}' \
+      --replace-fail '@purifier@' '${purifierSrc}'
+    substituteInPlace "$out/lib/carton-purifier/nix/realize-produced.nix" \
+      --replace-fail '@nixpkgs@' '${nixpkgsSrc}' \
+      --replace-fail '@purifier@' '${purifierSrc}' \
+      --replace-fail '@profile@' '${owningProfile}' \
+      --replace-fail '@tools@' '${owningProfile.tools}'
+    substituteInPlace "$out/lib/carton-purifier/nix/authored-input.nix" \
       --replace-fail '@nixpkgs@' '${nixpkgsSrc}' \
       --replace-fail '@purifier@' '${purifierSrc}'
     wrapProgram "$out/bin/carton-purifier" \
