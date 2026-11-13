@@ -31,6 +31,9 @@
           buildCartonProject = scope.callPackage ./nix/build-project.nix {
             purifier = import (purifier + "/nix/lib") { inherit (final) lib; };
           };
+          projectPerlLibrary = scope.callPackage ./nix/project-perl-library.nix {
+            purifier = import (purifier + "/nix/lib") { inherit (final) lib; };
+          };
         });
       };
       pkgsFor =
