@@ -79,6 +79,7 @@ def project(declared, observation_path, loader):
 
     traces = copy.deepcopy(current['xsLoads'])
     for trace in traces:
+        trace['moduleInput'] = declared['producerIdentity']
         for obj in trace['sharedObjects']:
             tag = obj['input']
             # verify() has just replayed physical ownership, bytes and SDK

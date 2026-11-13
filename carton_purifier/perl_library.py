@@ -182,7 +182,13 @@ def observe(request):
     traces = native["xsLoads"]
     traced_objects = set()
     for trace in traces:
-        within(trace["moduleFile"], allowed)
+        lookup = trace["requestedModule"].replace("::", "/") + ".pm"
+        expected = [Path(row["file"]).resolve(strict=True) for row in files if row["path"] == lookup]
+        module_path = within(trace["moduleFile"], [producer])
+        if len(expected) != 1 or module_path != expected[0]:
+            raise ValueError("carton-purifier: native probe did not load its original installed producer module")
+        trace["moduleSha256"] = digest(module_path.read_bytes())
+        trace["moduleInput"] = {"kind": "producer"}
         for module in trace["loadedModules"]:
             within(module["file"], allowed)
             if digest(Path(module["file"]).read_bytes()) != module["sha256"]:

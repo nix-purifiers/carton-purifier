@@ -11,18 +11,7 @@ use DynaLoader ();
 my ($request_path) = @ARGV;
 open my $request_file, '<', $request_path or die $!;
 my $request = JSON::PP->new->decode(do { local $/; <$request_file> });
-my @files;
-for my $entry (@{$request->{moduleFiles}}) {
-    my $meta = Module::Metadata->new_from_file($entry->{file})
-        or die "carton-purifier: cannot inspect actual module $entry->{file}\n";
-    my @packages;
-    for my $package (sort $meta->packages_inside) {
-        next unless $meta->is_indexable($package);
-        my $version = $meta->version($package);
-        push @packages, { name => $package, version => defined($version) ? "$version" : undef };
-    }
-    push @files, { %$entry, packages => \@packages };
-}
+# Record the original SDK before loading explicitly requested producer modules.
 my @inc;
 for my $path (@INC) {
     die "carton-purifier: unsupported application Perl loader hook\n" if ref $path;
@@ -46,6 +35,9 @@ for my $module (@{$request->{xsProbeModules} || []}) {
     local @INC = (@{$request->{libraryRoots}}, @INC);
     require $lookup;
     die "carton-purifier: native probe has no actual module origin\n" unless -f $INC{$lookup};
+    my @expected = grep { $_->{path} eq $lookup } @{$request->{moduleFiles}};
+    die "carton-purifier: native probe did not load its original installed producer module\n"
+        unless @expected == 1 && abs_path($expected[0]->{file}) eq abs_path($INC{$lookup});
     my @objects;
     my %seen;
     for my $object (@DynaLoader::dl_shared_objects) {
@@ -63,8 +55,26 @@ for my $module (@{$request->{xsProbeModules} || []}) {
         push @loaded, {name => $name, file => abs_path($INC{$name}),
             sha256 => Digest::SHA->new(256)->addfile($input)->hexdigest};
     }
+    my $module_version;
+    { no strict 'refs'; $module_version = ${$module . '::VERSION'}; }
     push @xs_loads, {requestedModule => $module, moduleFile => abs_path($INC{$lookup}),
+        nativeVersion => defined($module_version) ? "$module_version" : undef,
         sharedObjects => [sort {$a->{path} cmp $b->{path}} @objects], loadedModules => \@loaded};
+}
+# Upstream metadata may compute VERSION from a genuinely loaded prerequisite
+# (for example $Thrift::VERSION). Explicit native probes run unchanged code
+# before Module::Metadata evaluates that expression; null versions stay null.
+my @files;
+for my $entry (@{$request->{moduleFiles}}) {
+    my $meta = Module::Metadata->new_from_file($entry->{file})
+        or die "carton-purifier: cannot inspect actual module $entry->{file}\n";
+    my @packages;
+    for my $package (sort $meta->packages_inside) {
+        next unless $meta->is_indexable($package);
+        my $version = $meta->version($package);
+        push @packages, { name => $package, version => defined($version) ? "$version" : undef };
+    }
+    push @files, { %$entry, packages => \@packages };
 }
 print JSON::PP->new->canonical->encode({
     baseExecutable => abs_path($^X), config => { map { $_ => $Config{$_} } keys %Config },
