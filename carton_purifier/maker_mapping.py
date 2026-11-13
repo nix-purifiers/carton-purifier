@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Bind native MakeMaker PM entries to the actual native install-copy events."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import sys
 
 from perl_library import canonical, digest, relative, within
 
@@ -25,6 +26,27 @@ def rel(value, dot=False):
     if dot and value == ".":
         return Path(".")
     return relative(value)
+
+
+def join_native(cwd, value):
+    rel(cwd, dot=True)
+    if not isinstance(value, str) or not value or '\x00' in value:
+        raise ValueError('carton-purifier: unsupported native path')
+    if PurePosixPath(value).is_absolute() or '@build@' in value or '@producer@' in value:
+        raise ValueError('carton-purifier: unbound absolute or root token in native path')
+    parts = [] if cwd == '.' else cwd.split('/')
+    for component in value.split('/'):
+        if component in ('', '.'):
+            continue
+        if component == '..':
+            if not parts:
+                raise ValueError('carton-purifier: native path escapes build root')
+            parts.pop()
+        else:
+            parts.append(component)
+    if not parts:
+        raise ValueError('carton-purifier: native module path names build root')
+    return '/'.join(parts)
 
 
 def expand(value, variables):
@@ -126,23 +148,30 @@ def mapping_from_evidence(request, evidence):
             raise ValueError("carton-purifier: native copy bytes differ or dry run")
         if digest(target.read_bytes()) != event["destinationSha256"]:
             raise ValueError("carton-purifier: native installed mapping payload changed")
-    files, destinations = [], set()
+    if copies != sorted(copies, key=lambda row: (row["producerDestination"], row["buildSource"], canonical(row))):
+        raise ValueError("carton-purifier: noncanonical native copy order")
+    files, destinations, maker_ids = [], set(), set()
     for mm_index, maker in enumerate(evidence["makers"]):
         exact(maker, ["sourceCwd", "pm", "variables", "canonicalMakefileSha256"], "native maker")
         cwd = rel(maker["sourceCwd"], dot=True)
         sha(maker["canonicalMakefileSha256"])
+        maker_id = (maker["sourceCwd"], canonical(maker))
+        if maker_id in maker_ids:
+            raise ValueError("carton-purifier: ambiguous native maker identity")
+        maker_ids.add(maker_id)
         exact(maker["variables"], VARIABLES, "native MM variables")
         if any(value is not None and not isinstance(value, str) for value in maker["variables"].values()):
             raise ValueError("carton-purifier: unsupported native MM variable value")
         if not isinstance(maker["pm"], dict):
             raise ValueError("carton-purifier: invalid native PM map")
         for authored, expression in sorted(maker["pm"].items()):
-            rel(authored)
+            if not isinstance(authored, str):
+                raise ValueError("carton-purifier: invalid native PM source")
             if not authored.endswith(".pm"):
                 continue
-            original_relative = (cwd / authored).as_posix()
+            original_relative = join_native(maker["sourceCwd"], authored)
             original = within(source / rel(original_relative), [source])
-            blib = (cwd / rel(expand(expression, maker["variables"]))).as_posix()
+            blib = join_native(maker["sourceCwd"], expand(expression, maker["variables"]))
             matches = [(index, copy) for index, copy in enumerate(copies) if copy["buildSource"] == blib]
             if len(matches) != 1:
                 raise ValueError("carton-purifier: native PM has no unique install copy")
@@ -163,6 +192,8 @@ def mapping_from_evidence(request, evidence):
             files.append({"root": root, "lookup": lookup, "sourcePath": original_relative,
                           "sourceSha256": source_hash, "installedSha256": event["destinationSha256"],
                           "mmInvocation": mm_index, "installCopyEvent": copy_index})
+    if evidence["makers"] != sorted(evidence["makers"], key=lambda row: (row["sourceCwd"], canonical(row))):
+        raise ValueError("carton-purifier: noncanonical native maker order")
     if not files:
         raise ValueError("carton-purifier: native mapping contains no source modules")
     mapping = {key: evidence[key] for key in ("format", "sourceIdentity", "applicationPerlIdentity", "adapterIdentity", "nativeSources")}
@@ -213,15 +244,31 @@ def validate(request, events, build_root):
             if digest(raw) != sha(event["makefileSha256"]):
                 raise ValueError("carton-purifier: native Makefile changed after capture")
             normalized = raw.replace(str(build).encode(), b"@build@").replace(str(producer).encode(), b"@producer@")
+            normalized_pm = {}
             for authored, expression in event["pm"].items():
+                source_name, target_expression = normalize(authored), normalize(expression)
+                if source_name in normalized_pm:
+                    raise ValueError("carton-purifier: ambiguous normalized native PM source")
+                normalized_pm[source_name] = target_expression
                 if not authored.endswith(".pm"):
                     continue
-                original_relative = within(cwd / rel(authored), [build]).relative_to(build)
-                original = within(source / original_relative, [source])
-                blib = within(cwd / rel(expand(expression, event["variables"])), [build])
+                if Path(authored).is_absolute():
+                    raise ValueError("carton-purifier: absolute native PM source is unsupported")
+                source_relative = join_native(cwd.relative_to(build).as_posix(), source_name)
+                built_original = within(cwd / Path(authored), [build])
+                if built_original.relative_to(build).as_posix() != source_relative:
+                    raise ValueError("carton-purifier: native source path has a physical alias")
+                original = within(source / source_relative, [source])
+                expanded = expand(expression, event["variables"])
+                if Path(expanded).is_absolute():
+                    raise ValueError("carton-purifier: absolute native blib path is unsupported")
+                blib_relative = join_native(cwd.relative_to(build).as_posix(), normalize(expanded))
+                blib = within(cwd / Path(expanded), [build])
+                if blib.relative_to(build).as_posix() != blib_relative:
+                    raise ValueError("carton-purifier: native blib path has a physical alias")
                 if digest((cwd / authored).read_bytes()) != digest(original.read_bytes()) or digest(blib.read_bytes()) != digest(original.read_bytes()):
                     raise ValueError("carton-purifier: captured source/blib bytes differ")
-            makers.append({"sourceCwd": cwd.relative_to(build).as_posix(), "pm": event["pm"],
+            makers.append({"sourceCwd": cwd.relative_to(build).as_posix(), "pm": normalized_pm,
                            "variables": {key: normalize(value) for key, value in event["variables"].items()},
                            "canonicalMakefileSha256": digest(normalized)})
         elif event["kind"] == "native-install-copy":
@@ -234,6 +281,18 @@ def validate(request, events, build_root):
         else:
             raise ValueError("carton-purifier: unsupported captured native event")
     sources = native_sources(request, [sdk[key] for key in sorted(sdk)])
+    targets = [row["producerDestination"] for row in copies]
+    maker_ids = [(row["sourceCwd"], canonical(row)) for row in makers]
+    if len(set(targets)) != len(targets):
+        raise ValueError("carton-purifier: ambiguous native copy destination")
+    if len(set(maker_ids)) != len(maker_ids):
+        raise ValueError("carton-purifier: ambiguous native maker identity")
+    # Native File::Find/copy traversal order is not semantic and can vary between
+    # identical builds. Assign provenance indices only after canonical ordering.
+    makers.sort(key=lambda row: (row["sourceCwd"], canonical(row)))
+    copies.sort(key=lambda row: (row["producerDestination"], row["buildSource"], canonical(row)))
+    for event in events:
+        print(canonical(event).decode(), file=sys.stderr)
     evidence = {"format": FORMAT, "sourceIdentity": request["sourceIdentity"],
                 "applicationPerlIdentity": request["applicationPerl"]["identity"], "adapterIdentity": adapter_identity(sources),
                 "nativeSources": sources, "makers": makers, "copies": copies}
