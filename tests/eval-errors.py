@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="carton-eval-") as temporary:
     original = json.loads(path.read_text())
 
     def evaluate():
-        expression = f"let f=builtins.getFlake {json.dumps(str(REPO))}; in (import {REPO}/nix/read-lock.nix {{lib=f.inputs.nixpkgs.lib;}} {{src={root};}}).problems"
+        expression = f"let f=builtins.getFlake {json.dumps(str(REPO))}; in (import {REPO}/lib-overlays/default/read-lock.nix {{lib=f.inputs.nixpkgs.lib;}} {{src={root};}}).problems"
         return json.loads(
             subprocess.check_output(
                 ["nix", "eval", "--impure", "--json", "--expr", expression], text=True

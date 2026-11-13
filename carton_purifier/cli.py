@@ -54,7 +54,7 @@ def realize(root, companion, snapshot, target="environment"):
             "build",
             "--impure",
             "--file",
-            Path(__file__).resolve().parents[1] / "nix/realize.nix",
+            Path(__file__).resolve().parents[1] / "pkgs/build-carton-project/realize.nix",
             "--no-link",
             "--print-out-paths",
             "--argstr",

@@ -11,7 +11,7 @@
 }:
 let
   tools = builtins.path {
-    path = ../carton_purifier;
+    path = ../../carton_purifier;
     name = "carton-perl-library-projector";
     filter = path: type: type == "directory" || builtins.any (name: lib.hasSuffix ("/" + name) path) toolNames;
   };
@@ -25,7 +25,7 @@ let
     "Carton/Purifier/MakeMaker.pm"
   ];
   projectorIdentity = builtins.hashString "sha256" (
-    builtins.toJSON (map (name: { inherit name; sha256 = builtins.hashFile "sha256" (../carton_purifier + "/${name}"); }) toolNames)
+    builtins.toJSON (map (name: { inherit name; sha256 = builtins.hashFile "sha256" (../../carton_purifier + "/${name}"); }) toolNames)
   );
   sdk = import ./perl-library-sdk.nix { inherit lib purifier; } applicationPerl;
   outputs = import ./perl-producer-outputs.nix { inherit lib purifier; } producer;

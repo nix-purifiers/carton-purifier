@@ -32,7 +32,7 @@ def references(root):
 
 def command(root, companion, snapshot, target):
     return ['nix', 'build', '--impure', '--no-link', '--print-out-paths', '--file',
-            Path(__file__).resolve().parents[1] / 'nix/realize-produced.nix',
+            Path(__file__).resolve().parents[1] / 'pkgs/build-carton-project/realize-produced.nix',
             '--argstr', 'project', root, '--argstr', 'companion', companion,
             '--argstr', 'snapshot', snapshot, '--argstr', 'target', target,
             '--argstr', 'references', json.dumps(references(root))]
@@ -80,7 +80,7 @@ def lock(root, companion, snapshot, inputs, dependencies, without, update):
         if without is None:
             without = json.loads(companion.read_text())['nativeContext']['without'] if companion.exists() and json.loads(companion.read_text()).get('schemaVersion') == 2 else []
         return capture_produced(root, companion, snapshot, selected,
-                                Path(__file__).resolve().parents[1] / 'nix/authored-input.nix',
+                                Path(__file__).resolve().parents[1] / 'pkgs/build-carton-project/authored-input.nix',
                                 sorted(set([*inputs, LOCATORS])), without=without, update=update)
     except BaseException:
         for path, content in saved.items():

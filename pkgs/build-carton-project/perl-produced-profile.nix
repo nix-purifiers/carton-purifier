@@ -8,7 +8,7 @@ let
   toolPerl = perl.withPackages (_: [ nativeCarton ]);
   compiler = import ./perl-native-compiler.nix { inherit lib symlinkJoin makeWrapper gcc; } applicationPerl;
   tools = builtins.path {
-    path = ../carton_purifier;
+    path = ../../carton_purifier;
     name = "carton-produced-profile-tools";
     filter = path: type: !(builtins.elem (baseNameOf path) [ "__pycache__" ]) && !(lib.hasSuffix ".pyc" path);
   };

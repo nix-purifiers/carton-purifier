@@ -5,7 +5,7 @@
 let
  core=purifier;
  perl=pkgs.perl.withPackages(ps:[ps.BitVector ps.ClassAccessor]);
- sdk=import ../nix/perl-library-sdk.nix {inherit(pkgs)lib;inherit purifier;} perl;
+ sdk=import ../pkgs/build-carton-project/perl-library-sdk.nix {inherit(pkgs)lib;inherit purifier;} perl;
  tools=builtins.path {path=../carton_purifier;name="native-metadata-phase-tools";filter=path: type: baseNameOf path != "__pycache__" && !(pkgs.lib.hasSuffix ".pyc" path);};
  foreign=pkgs.runCommand "same-byte-foreign-native-sdk-files" {nativeBuildInputs=[perl];} ''
   mkdir -p "$out"

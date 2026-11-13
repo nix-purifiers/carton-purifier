@@ -75,7 +75,7 @@ if dependencies != [ ] then
 else
 let
   lock = purifier.checkLock (
-    import ./read-lock.nix { inherit lib; } { inherit src lockFile snapshot; }
+    import ../../lib-overlays/default/read-lock.nix { inherit lib; } { inherit src lockFile snapshot; }
   );
   environment = import ./environment.nix {
     inherit
@@ -121,7 +121,7 @@ let
         ${buildCommand}
         ${lib.optionalString doCheck checkCommand}
         ${installCommand}
-        python3 ${../carton_purifier/normalize.py} "$out" "$out/lib/perl5"
+        python3 ${../../carton_purifier/normalize.py} "$out" "$out/lib/perl5"
         if [ -d "$out/bin" ]; then
           HOST_PATH=${perl}/bin:$HOST_PATH patchShebangs --host --update "$out/bin"
           for program in "$out/bin"/*; do

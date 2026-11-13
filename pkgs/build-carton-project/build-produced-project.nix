@@ -50,7 +50,7 @@ let
     chmod -R u+w work
     cd work
     ${environment}/bin/carton exec -- ${runtimeShell} -e ${commands}
-    ${python3}/bin/python3 ${../carton_purifier/normalize.py} "$out" "$out/lib/perl5"
+    ${python3}/bin/python3 ${../../carton_purifier/normalize.py} "$out" "$out/lib/perl5"
     perllib="$out/lib/perl5:$(${environment}/bin/perl -e 'print join q(:), @INC')"
     if [ -d "$out/bin" ]; then
       HOST_PATH=${perl}/bin:$HOST_PATH patchShebangs --host --update "$out/bin"
