@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: MIT
+use strict;
+use warnings;
+use Carton::Dist::Produced;
+use Carton::Purifier::Requirements;
+use Carton::Tree;
+use Carton::CPANfile;
+use Carton::Snapshot;
+use Menlo::Dependency;
+use Menlo::CLI::Compat;
+use Module::Metadata;
+use File::Temp qw(tempdir);
+use Digest::SHA qw(sha256_hex);
+use JSON::PP;
+my ($source)=@ARGV;
+my $metadata=Module::Metadata->new_from_file($source) or die 'real generated metadata missing';
+my $name='SchemaMain::Envelope';
+die 'class missing' unless grep {$_ eq $name} $metadata->packages_inside;
+my $version=$metadata->version($name);die 'unexpected version' if defined $version;
+my $dist=Carton::Dist::Produced->new(identity=>sha256_hex($source),provides=>{$name=>{version=>$version}},requirements=>{'strict'=>'0'});
+die 'wrong native requirements type' unless $dist->requirements->isa('CPAN::Meta::Requirements');
+die 'produced distribution marked core' if $dist->is_core;
+die 'CPAN path exposed' if $dist->can('pathname');
+my $folder=tempdir(CLEANUP=>1);
+open my $f,'>',"$folder/cpanfile" or die $!;print {$f} "requires '$name','0';\n";close $f;
+my $file=Carton::CPANfile->new(path=>"$folder/cpanfile");$file->load;
+{
+    package Owned::ProvidedSnapshot;
+    use parent 'Carton::Snapshot';
+    our $provided;
+    sub find_or_core {my($self,$module)=@_;return $self->SUPER::find_or_core($module)||($provided->provides_module($module)?$provided:undef)}
+}
+$Owned::ProvidedSnapshot::provided=$dist;
+my $snapshot=Owned::ProvidedSnapshot->new(path=>"$folder/cpanfile.snapshot");
+my $tree=Carton::Tree->new(cpanfile=>$file,snapshot=>$snapshot);
+my $merged=$tree->merged_requirements;
+die 'tree lost produced requirement' unless defined $merged->requirements_for_module($name);
+die 'tree lost actual provided runtime edge' unless defined $merged->requirements_for_module('strict');
+die 'provided leaked into native CPAN distributions' if $snapshot->distributions;
+my $providers={$name=>{nativeVersion=>$version}};
+my @direct=Menlo::Dependency->from_versions({$name=>'0'});
+my $menlo=Menlo::CLI::Compat->new;
+$menlo->{search_inc}=[@INC];
+my @original=$menlo->unsatisfied_deps(@direct);
+die 'original native check unexpectedly finds missing Envelope.pm' unless @original;
+my @provided=Carton::Purifier::Requirements::unsatisfied($providers,[@INC],@direct);
+die 'provided class rejected' if @provided;
+my @bad=Carton::Purifier::Requirements::unsatisfied($providers,[@INC],Menlo::Dependency->from_versions({$name=>'1'}));
+die 'provided minimum accepted' unless @bad && $bad[0]=~/provided package/;
+my @residual=Menlo::Dependency->from_versions({'Owned::Missing::Residual'=>'0'});
+my @native_residual=sort { $a cmp $b } $menlo->unsatisfied_deps(@residual);
+my @mixed=sort { $a cmp $b } Carton::Purifier::Requirements::unsatisfied($providers,[@INC],@direct,@residual);
+die 'residual native check changed' unless JSON::PP->new->canonical->encode(\@native_residual) eq JSON::PP->new->canonical->encode(\@mixed);
+print JSON::PP->new->canonical->pretty->encode({scope=>'native Carton tree and Menlo final-validation helper unit; profile wiring/transitive native install pending',nativeSource=>$source,nativeVersion=>$version,treeRequirements=>$merged->as_string_hash,nativeClassLookupFailures=>\@original,providedClassFailures=>\@provided,providedMinimumFailures=>\@bad,residualNativeFailures=>\@mixed,nativeCPANDistributions=>scalar($snapshot->distributions),result=>'PASS'});
