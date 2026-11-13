@@ -5,6 +5,7 @@ use warnings;
 use JSON::PP;
 use CPAN::Meta::Requirements;
 use Carton::Dist::Produced;
+use Carton::Dist::SDK;
 use Carton::Purifier::Requirements;
 use Carton::Snapshot;
 use Menlo::CLI::Compat;
@@ -39,6 +40,7 @@ sub install {
     $ENV{PERL5LIB} = join ':', @roots, @sdk_inc;
     delete $ENV{PERL5OPT};
     my %dist;
+    my $sdk = Carton::Dist::SDK->new(%{$profile->{sdkNode}});
     for my $row (@{$profile->{distributions}}) {
         my $requirements = CPAN::Meta::Requirements->new;
         for my $set (@{$row->{requirementSets}}) {
@@ -99,6 +101,25 @@ sub install {
         if ($dist{$module}) {
             die "carton-purifier: produced package collides with native snapshot/core: $module\n" if $native;
             return $dist{$module};
+        }
+        if ($sdk->provides_module($module)) {
+            die "carton-purifier: SDK package collides with native CPAN snapshot: $module\n"
+                if $native && !$native->is_core;
+            if ($native) {
+                my $expected = $sdk->version_for($module);
+                my $actual = $native->version_for($module);
+                my $equal = !defined($expected) && !defined($actual);
+                if (defined($expected) && defined($actual)) {
+                    my $requirements = CPAN::Meta::Requirements->new;
+                    $requirements->add_string_requirement($module, '== ' . $expected);
+                    $equal = $requirements->accepts_module($module, $actual);
+                }
+                my $json = JSON::PP->new->canonical;
+                die "carton-purifier: selected SDK contradicts native core package: $module\n"
+                    unless $equal && $json->encode($providers->{$module}{providerIdentity})
+                        eq $json->encode($profile->{sdkNode}{baseIdentity});
+            }
+            return $sdk unless $native;
         }
         return $native;
     };

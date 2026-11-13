@@ -39,6 +39,10 @@ def profile(declared):
     # Perl itself is a native interpreter requirement, not a fabricated module.
     providers['perl'] = {'nativeVersion': sdk['config']['version'],
                          'providerIdentity': declared['applicationPerl']['identity'], 'declaredIn': []}
+    sdk_node = {'identity': declared['applicationPerl']['identity'],
+                'baseIdentity': declared['basePerl']['identity'],
+                'runtimeInputs': declared['runtimeInputs'],
+                'provides': {name: {'version': row['nativeVersion']} for name, row in providers.items()}}
     for supplier in declared['suppliers']:
         catalog, supplied, supplied_roots = project(supplier['declared'], supplier['observation'], supplier['loader'])
         if Path(supplier['catalog']).read_bytes() != canonical(catalog) + b'\n':
@@ -71,6 +75,7 @@ def profile(declared):
     return {'format': 'carton-produced-profile-v1', 'providers': providers,
             'distributions': distributions, 'libraryRoots': list(dict.fromkeys(roots)),
             'sdkInc': sdk['inc'], 'sdkInventory': sdk, 'ambiguousSdkPackages': sorted(ambiguous),
+            'sdkNode': sdk_node,
             'applicationPerl': declared['applicationPerl']}
 
 
