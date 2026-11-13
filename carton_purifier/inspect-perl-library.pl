@@ -6,6 +6,7 @@ use Module::Metadata;
 use JSON::PP;
 use Cwd qw(abs_path);
 use Digest::SHA;
+use DynaLoader ();
 
 my ($request_path) = @ARGV;
 open my $request_file, '<', $request_path or die $!;
@@ -37,7 +38,35 @@ for my $module (sort keys %INC) {
     push @origins, { module => $module, file => abs_path($file),
         sha256 => Digest::SHA->new(256)->addfile($input)->hexdigest };
 }
+my @xs_loads;
+for my $module (@{$request->{xsProbeModules} || []}) {
+    die "carton-purifier: invalid native probe module\n"
+        unless $module =~ /\A[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*\z/;
+    my $lookup = $module; $lookup =~ s{::}{/}g; $lookup .= '.pm';
+    local @INC = (@{$request->{libraryRoots}}, @INC);
+    require $lookup;
+    die "carton-purifier: native probe has no actual module origin\n" unless -f $INC{$lookup};
+    my @objects;
+    my %seen;
+    for my $object (@DynaLoader::dl_shared_objects) {
+        my $actual = abs_path($object);
+        die "carton-purifier: missing loaded native object\n" unless defined $actual && -f $actual;
+        next if $seen{$actual}++;
+        open my $input, '<', $actual or die $!; binmode $input;
+        push @objects, {path => $actual, sha256 => Digest::SHA->new(256)->addfile($input)->hexdigest};
+    }
+    my @loaded;
+    for my $name (sort keys %INC) {
+        die "carton-purifier: unsupported native probe loader origin\n" if ref $INC{$name};
+        next unless -f $INC{$name};
+        open my $input, '<', $INC{$name} or die $!; binmode $input;
+        push @loaded, {name => $name, file => abs_path($INC{$name}),
+            sha256 => Digest::SHA->new(256)->addfile($input)->hexdigest};
+    }
+    push @xs_loads, {requestedModule => $module, moduleFile => abs_path($INC{$lookup}),
+        sharedObjects => [sort {$a->{path} cmp $b->{path}} @objects], loadedModules => \@loaded};
+}
 print JSON::PP->new->canonical->encode({
     baseExecutable => abs_path($^X), config => { map { $_ => $Config{$_} } keys %Config },
-    inc => \@inc, moduleOrigins => \@origins, moduleFiles => \@files,
+    inc => \@inc, moduleOrigins => \@origins, moduleFiles => \@files, xsLoads => \@xs_loads,
 });

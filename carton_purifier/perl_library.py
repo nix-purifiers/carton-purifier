@@ -14,6 +14,17 @@ import subprocess
 import tempfile
 
 
+def read_json(path):
+    def unique_pairs(items):
+        result = {}
+        for name, value in items:
+            if name in result:
+                raise ValueError("carton-purifier: duplicate JSON field: " + name)
+            result[name] = value
+        return result
+    return json.loads(Path(path).read_text(), object_pairs_hook=unique_pairs)
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
@@ -76,16 +87,18 @@ def payload(root, allowed):
     return records
 
 
-def inspect(request, files):
+def inspect(request, files, roots):
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("PERL")}
     environment.update(PERL_HASH_SEED="0", PERL_PERTURB_KEYS="0")
     with tempfile.TemporaryDirectory(prefix="perl-library-inspect-") as temporary:
         path = Path(temporary) / "request.json"
-        path.write_bytes(canonical({"moduleFiles": files}))
+        path.write_bytes(canonical({"moduleFiles": files, "libraryRoots": roots, "xsProbeModules": sorted(request.get("xsProbeModules", []))}))
         result = subprocess.run([request["applicationPerl"]["executable"],
                                  str(Path(__file__).with_name("inspect-perl-library.pl")), str(path)],
-                                env=environment, text=True, capture_output=True, check=True)
+                                env=environment, text=True, capture_output=True, check=False)
+        if result.returncode:
+            raise ValueError("carton-purifier: native library inspection failed: " + result.stderr)
         return json.loads(result.stdout)
 
 
@@ -120,6 +133,19 @@ def observe(request):
                for other in source_lookup_roots):
             raise ValueError("carton-purifier: overlapping or aliased source lookup roots")
         source_lookup_roots.append(source_lookup)
+    module_mappings, mapped_files = [], {}
+    if request.get("moduleMappingFiles"):
+        from maker_mapping import verify as verify_mapping
+        for record in request["moduleMappingFiles"]:
+            mapping = read_json(within(record["mapping"], allowed))
+            evidence = read_json(within(record["evidence"], allowed))
+            verified = verify_mapping(request, mapping, evidence)
+            module_mappings.append(verified)
+            for item in verified["files"]:
+                key = (item["root"], item["lookup"])
+                if key in mapped_files:
+                    raise ValueError("carton-purifier: ambiguous native module mapping")
+                mapped_files[key] = item
     roots, files, xs_files = [], [], []
     for root in root_paths:
         actual = producer / root
@@ -127,15 +153,17 @@ def observe(request):
         for row in records:
             if row["type"] != "directory" and row["path"].endswith(".pm"):
                 actual_hash = digest((actual / row["path"]).read_bytes())
-                authored = source / source_roots[str(root)] / row["path"]
+                mapping = mapped_files.get((str(root), row["path"]))
+                source_relative = mapping["sourcePath"] if mapping else str(Path(source_roots[str(root)]) / row["path"])
+                authored = source / source_relative
                 if not authored.is_file() or digest(authored.read_bytes()) != actual_hash:
                     raise ValueError("carton-purifier: installed module lookup differs from unchanged source payload: " + row["path"])
                 within(authored, [source])
-                files.append({"root": str(root), "path": row["path"], "file": str(actual / row["path"])})
+                files.append({"root": str(root), "path": row["path"], "file": str(actual / row["path"]), "sourcePath": source_relative})
             if row["type"] != "directory" and Path(row["path"]).suffix in {".so", ".dylib", ".dll", ".bundle"}:
                 xs_files.append(str((actual / row["path"]).resolve(strict=True)))
         roots.append({"path": str(root), "sourceRoot": source_roots[str(root)], "payload": records, "loadableFiles": []})
-    native = inspect(request, files)
+    native = inspect(request, files, [str(producer / root) for root in root_paths])
     root_map = {row["path"]: row for row in roots}
     packages, lookups = {}, {}
     for module in native["moduleFiles"]:
@@ -144,15 +172,33 @@ def observe(request):
             raise ValueError("carton-purifier: ambiguous module lookup: " + key)
         lookups[key] = module
         root_map[module["root"]]["loadableFiles"].append({
-            "lookup": key, "path": key, "packages": [package["name"] for package in module["packages"]]})
+            "lookup": key, "path": key, "sourcePath": module["sourcePath"], "packages": [package["name"] for package in module["packages"]]})
         for package in module["packages"]:
             if package["name"] in packages:
                 raise ValueError("carton-purifier: ambiguous declared package: " + package["name"])
             packages[package["name"]] = dict(package, declaredIn=[{"root": module["root"], "path": key}])
-    # XS is not assumed compatible from a filename or version. This first
-    # observer increment supports pure Perl only; loaded XS proof is integrated
-    # in the next increment before the profile accepts native libraries.
-    if xs_files:
+    traces = native["xsLoads"]
+    traced_objects = set()
+    for trace in traces:
+        within(trace["moduleFile"], allowed)
+        for module in trace["loadedModules"]:
+            within(module["file"], allowed)
+            if digest(Path(module["file"]).read_bytes()) != module["sha256"]:
+                raise ValueError("carton-purifier: loaded native probe module changed")
+        for obj in trace["sharedObjects"]:
+            path = within(obj["path"], allowed)
+            if digest(path.read_bytes()) != obj["sha256"]:
+                raise ValueError("carton-purifier: loaded native shared object changed")
+            if path.is_relative_to(producer):
+                obj["input"] = {"kind": "producer"}
+            else:
+                owners = [entry["identity"] for entry in request["runtimeInputPaths"]
+                          if path.is_relative_to(Path(entry["path"]).resolve(strict=True))]
+                if len(owners) != 1:
+                    raise ValueError("carton-purifier: native shared object has no unique declared input")
+                obj["input"] = {"kind": "input", "identity": owners[0]}
+            traced_objects.add(str(path))
+    if set(xs_files) - traced_objects:
         raise ValueError("carton-purifier: XS library requires verified native load observation")
     metadata = []
     for name in sorted(request["nativeMetadataPaths"]):
@@ -175,7 +221,7 @@ def observe(request):
     return {"format": "perl-library-production-v1", "sourceIdentity": request["sourceIdentity"],
             "sourcePayload": source_payload, "producerPath": str(producer), "roots": roots,
             "packages": [packages[name] for name in sorted(packages)], "nativeMetadata": metadata,
-            "sdk": sdk, "dependencies": request["dependencies"], "xsLoads": []}
+            "sdk": sdk, "dependencies": request["dependencies"], "xsLoads": traces, "moduleMappings": module_mappings}
 
 
 def verify(request, observation):
