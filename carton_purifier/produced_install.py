@@ -32,13 +32,17 @@ def check_collisions(profile, local, distributions):
                              'lib->import($ARGV[0]); print JSON::PP->new->encode(\\@INC);', str(library)],
                             env=env, text=True, capture_output=True, check=True)
     search_paths = json.loads(result.stdout)
-    protected = {row['lookup'] for row in profile['moduleLookups']}
+    protected = {row['lookup'] for row in profile['moduleLookups'] + profile['nativeLookups']}
     # Use the selected interpreter's actual @INC expansion, including its
     # architecture/version directories, rather than inventing a layout matrix.
     for name in search_paths:
         root = Path(name)
         if root.is_dir() and root.resolve(strict=True).is_relative_to(library):
-            for file in root.rglob('*.pm'):
+            for file in root.rglob('*'):
+                # Native MakeMaker writes its own installation ledger in each
+                # local tree. This file does not participate in loading code.
+                if not file.is_file() or file.name == 'perllocal.pod':
+                    continue
                 lookup = file.relative_to(root).as_posix()
                 if lookup in protected:
                     raise ValueError('native CPAN lookup collides with original SDK/producer: ' + lookup)

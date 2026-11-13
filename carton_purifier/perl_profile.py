@@ -7,10 +7,12 @@ import sys
 from perl_library import canonical, digest, inspect, read_json, within
 from perl_projector import project, verify_sdk_modules
 from perl_sdk_inventory import inventory
+from perl_lookup_inventory import inventory as lookup_inventory
 
 
 def profile(declared):
     sdk = inventory(declared)
+    native_lookups = lookup_inventory(sdk['inc'], declared['runtimeInputPaths'])
     native = inspect(declared, [], [])
     tool_native = inspect(declared['toolSdk'], [], [])
     if tool_native['baseExecutable'] != sdk['baseExecutable'] or canonical(tool_native['config']) != canonical(sdk['config']):
@@ -80,6 +82,12 @@ def profile(declared):
             for root in producer['roots']:
                 for item in root['loadableFiles']:
                     claim(lookups, item['lookup'], producer['identity'])
+                for item in root['payload']:
+                    if item['type'] in {'file', 'link'}:
+                        actual = Path(item['resolvedOrigin'])
+                        if actual.is_file():
+                            native_lookups.append({'lookup': item['path'], 'file': str(actual),
+                                                   'sha256': digest(actual.read_bytes()), 'input': producer['identity']})
             provides = {}
             for package in producer['packages']:
                 claim(package_owners, package['name'], producer['identity'])
@@ -100,6 +108,7 @@ def profile(declared):
             'applicationPerl': declared['applicationPerl'], 'applicationSdk': application_sdk,
             'provided': sorted(provided.values(), key=canonical), 'profileIdentity': profile_identity,
             'moduleLookups': [{'lookup': name, 'input': owner} for name, owner in sorted(lookups.items())],
+            'nativeLookups': sorted(native_lookups, key=canonical),
             'toolVersions': dict(declared['toolVersions'], sdk=profile_identity)}
 
 
