@@ -18,6 +18,7 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - run: python3 tests/eval-errors.py
       - run: nix flake check -L
+      - run: python3 -B tests/produced-consumer.py
       - run: tests/conformance-rebuild.sh
   conformance:
     name: conformance-${{ matrix.case }} (${{ matrix.runner }})
