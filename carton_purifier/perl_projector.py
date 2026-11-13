@@ -85,13 +85,18 @@ def project(declared, observation_path, loader):
             # verify() has just replayed physical ownership, bytes and SDK
             # traces; only now replace the producer's nonrecursive tag.
             obj['input'] = declared['producerIdentity'] if tag == {'kind': 'producer'} else tag['identity']
+    metadata_loads = copy.deepcopy(current['metadataLoads'])
+    for rows in metadata_loads.values():
+        for row in rows:
+            tag = row['input']
+            row['input'] = declared['producerIdentity'] if tag == {'kind': 'producer'} else tag['identity']
     catalog = {'format': 'perl', 'profile': 'installed-library-v1',
                'producerIdentity': declared['producerIdentity'],
                'sourceIdentity': declared['sourceIdentity'],
                'projectorIdentity': declared['projectorIdentity'],
                'observationSha256': digest(Path(observation_path).read_bytes()),
                **{key: current[key] for key in ['roots', 'packages', 'nativeMetadata', 'sdk', 'moduleMappings']},
-               'dependencies': dependencies, 'xsLoads': traces}
+               'dependencies': dependencies, 'xsLoads': traces, 'metadataLoads': metadata_loads}
     semantic = {key: value for key, value in catalog.items() if key != 'observationSha256'}
     semantic['producerOutputs'] = declared['producerOutputs']
     catalog['semanticIdentity'] = digest(canonical(semantic))

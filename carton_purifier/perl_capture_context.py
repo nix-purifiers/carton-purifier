@@ -90,6 +90,7 @@ def reconstruct(declared, observation_path):
     # source/producer identity, command, allowedRoots or dependency declaration
     # can replace the constructor's original Nix-derived values.
     request = dict(declared)
+    request['producerOutputPaths'] = [str(root) for root in roots]
     for key in ['nativeMetadataPaths', 'moduleMappingFiles', 'xsProbeModules']:
         request[key] = context[key]
     request['allowedRoots'] = list(dict.fromkeys([

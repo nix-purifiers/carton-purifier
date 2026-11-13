@@ -69,6 +69,10 @@
           project = build.packages.default;
           release = build.release;
           cli = self.packages.${system}.default;
+          metadata-loads = import ./tests/metadata-loads.nix {
+            pkgs = pkgsFor system;
+            purifier = import (purifier + "/nix/lib") { inherit (nixpkgs) lib; };
+          };
           installed = (pkgsFor system).runCommand "perl-installed-consumer" { } ''
             ${build.packages.default}/bin/example > output.json
             ${(pkgsFor system).python3}/bin/python3 -c 'import json; assert json.load(open("output.json")) == {"answer": 42}'

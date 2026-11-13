@@ -76,7 +76,27 @@ for my $entry (@{$request->{moduleFiles}}) {
     }
     push @files, { %$entry, packages => \@packages };
 }
+my @metadata_modules;
+for my $name (sort keys %INC) {
+    my $file = $INC{$name};
+    die "carton-purifier: unsupported metadata loader origin\n"
+        if ref($file) || !defined($file) || !-f $file;
+    open my $input, '<', $file or die $!; binmode $input;
+    push @metadata_modules, {name => $name, file => abs_path($file),
+        sha256 => Digest::SHA->new(256)->addfile($input)->hexdigest};
+}
+my @metadata_objects;
+my %metadata_objects_seen;
+for my $object (@DynaLoader::dl_shared_objects) {
+    my $actual = abs_path($object);
+    die "carton-purifier: missing metadata native object\n" unless defined($actual) && -f $actual;
+    next if $metadata_objects_seen{$actual}++;
+    open my $input, '<', $actual or die $!; binmode $input;
+    push @metadata_objects, {path => $actual, sha256 => Digest::SHA->new(256)->addfile($input)->hexdigest};
+}
 print JSON::PP->new->canonical->encode({
     baseExecutable => abs_path($^X), config => { map { $_ => $Config{$_} } keys %Config },
     inc => \@inc, moduleOrigins => \@origins, moduleFiles => \@files, xsLoads => \@xs_loads,
+    metadataLoads => {modules => \@metadata_modules,
+        sharedObjects => [sort {$a->{path} cmp $b->{path}} @metadata_objects]},
 });

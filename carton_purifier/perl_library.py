@@ -108,6 +108,7 @@ def observe(request):
     source = Path(request["sourcePath"]).resolve(strict=True)
     producer = Path(request["producerPath"]).resolve(strict=True)
     allowed = [Path(path).resolve(strict=True) for path in request["allowedRoots"]]
+    producer_outputs = [within(path, allowed) for path in request.get("producerOutputPaths", [producer])]
     within(source, allowed)
     within(producer, allowed)
     root_paths = [relative(root) for root in request["roots"]]
@@ -165,7 +166,8 @@ def observe(request):
             if row["type"] != "directory" and Path(row["path"]).suffix in {".so", ".dylib", ".dll", ".bundle"}:
                 xs_files.append(str((actual / row["path"]).resolve(strict=True)))
         roots.append({"path": str(root), "sourceRoot": source_roots[str(root)], "payload": records, "loadableFiles": []})
-    native = inspect(request, files, [str(producer / root) for root in root_paths])
+    native = inspect(request, files, [str(producer / root) for root in root_paths]
+                     + request.get('dependencyLibraryRoots', []))
     root_map = {row["path"]: row for row in roots}
     packages, lookups = {}, {}
     for module in native["moduleFiles"]:
@@ -181,10 +183,23 @@ def observe(request):
             packages[package["name"]] = dict(package, declaredIn=[{"root": module["root"], "path": key}])
     traces = native["xsLoads"]
     traced_objects = set()
+    original_inputs = [*request['runtimeInputPaths'],
+                       {'path': str(source), 'identity': request['sourceIdentity']},
+                       *request.get('dependencyInputPaths', [])]
+
+    def original_owner(path):
+        if any(path.is_relative_to(output) for output in producer_outputs):
+            return {'kind': 'producer'}
+        owners = {canonical(entry['identity']): entry['identity'] for entry in original_inputs
+                  if path.is_relative_to(Path(entry['path']).resolve(strict=True))}
+        if len(owners) != 1:
+            raise ValueError('carton-purifier: native loaded file has no unique original input owner: ' + str(path))
+        return {'kind': 'input', 'identity': next(iter(owners.values()))}
+
     for trace in traces:
         lookup = trace["requestedModule"].replace("::", "/") + ".pm"
         expected = [Path(row["file"]).resolve(strict=True) for row in files if row["path"] == lookup]
-        module_path = within(trace["moduleFile"], [producer])
+        module_path = within(trace["moduleFile"], producer_outputs)
         if len(expected) != 1 or module_path != expected[0]:
             raise ValueError("carton-purifier: native probe did not load its original installed producer module")
         trace["moduleSha256"] = digest(module_path.read_bytes())
@@ -197,17 +212,17 @@ def observe(request):
             path = within(obj["path"], allowed)
             if digest(path.read_bytes()) != obj["sha256"]:
                 raise ValueError("carton-purifier: loaded native shared object changed")
-            if path.is_relative_to(producer):
-                obj["input"] = {"kind": "producer"}
-            else:
-                owners = [entry["identity"] for entry in request["runtimeInputPaths"]
-                          if path.is_relative_to(Path(entry["path"]).resolve(strict=True))]
-                if len(owners) != 1:
-                    raise ValueError("carton-purifier: native shared object has no unique declared input")
-                obj["input"] = {"kind": "input", "identity": owners[0]}
+            obj['input'] = original_owner(path)
             traced_objects.add(str(path))
     if set(xs_files) - traced_objects:
         raise ValueError("carton-purifier: XS library requires verified native load observation")
+    metadata_loads = native['metadataLoads']
+    for collection, key in [('modules', 'file'), ('sharedObjects', 'path')]:
+        for row in metadata_loads[collection]:
+            path = within(row[key], allowed)
+            if digest(path.read_bytes()) != row['sha256']:
+                raise ValueError('carton-purifier: metadata-time loaded file changed')
+            row['input'] = original_owner(path)
     metadata = []
     for name in sorted(request["nativeMetadataPaths"]):
         path = within(name, allowed)
@@ -229,7 +244,8 @@ def observe(request):
     return {"format": "perl-library-production-v1", "sourceIdentity": request["sourceIdentity"],
             "sourcePayload": source_payload, "producerPath": str(producer), "roots": roots,
             "packages": [packages[name] for name in sorted(packages)], "nativeMetadata": metadata,
-            "sdk": sdk, "dependencies": request["dependencies"], "xsLoads": traces, "moduleMappings": module_mappings, "captureContext": capture_context}
+            "sdk": sdk, "dependencies": request["dependencies"], "xsLoads": traces, "metadataLoads": metadata_loads,
+            "moduleMappings": module_mappings, "captureContext": capture_context}
 
 
 def verify(request, observation):

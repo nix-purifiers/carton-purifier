@@ -39,6 +39,15 @@ def inventory(request):
     # versions and does not derive class loader filenames from package names.
     files = [{'root': 'sdk', 'path': key, 'file': row['file']} for key, row in sorted(lookups.items())]
     parsed = inspect(dict(request, xsProbeModules=[]), files, [])
+    for collection, key in [('modules', 'file'), ('sharedObjects', 'path')]:
+        for row in parsed['metadataLoads'][collection]:
+            actual = within(row[key], allowed)
+            if digest(actual.read_bytes()) != row['sha256']:
+                raise ValueError('carton-purifier: SDK metadata load changed')
+            owners = {canonical(identity): identity for root, identity in inputs if actual.is_relative_to(root)}
+            if len(owners) != 1:
+                raise ValueError('carton-purifier: SDK metadata load has no unique original input owner')
+            row['input'] = next(iter(owners.values()))
     rows = []
     packages = {}
     for entry in parsed['moduleFiles']:
@@ -56,4 +65,4 @@ def inventory(request):
         if len(owners) != 1:
             raise ValueError('carton-purifier: ambiguous SDK package owners: ' + name)
     return {'baseExecutable': parsed['baseExecutable'], 'config': parsed['config'],
-            'inc': parsed['inc'], 'modules': rows}
+            'inc': parsed['inc'], 'modules': rows, 'metadataLoads': parsed['metadataLoads']}

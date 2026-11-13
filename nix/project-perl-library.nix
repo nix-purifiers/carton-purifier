@@ -30,6 +30,14 @@ let
   sdk = import ./perl-library-sdk.nix { inherit lib purifier; } applicationPerl;
   outputs = import ./perl-producer-outputs.nix { inherit lib purifier; } producer;
   suppliers = import ./perl-library-inputs.nix { inherit lib purifier; } dependencies;
+  supplierInputs = supplier:
+    supplier.declared.runtimeInputPaths
+    ++ [ { path = supplier.declared.sourcePath; identity = supplier.declared.sourceIdentity; } ]
+    ++ map (output: { inherit (output) path identity; }) supplier.declared.producerOutputs
+    ++ lib.concatMap supplierInputs supplier.declared.suppliers;
+  supplierRoots = supplier:
+    map (root: "${supplier.declared.producerPath}/${root}") supplier.declared.roots
+    ++ lib.concatMap supplierRoots supplier.declared.suppliers;
   declared = sdk // {
     inherit roots sourceRoots projectorIdentity runtimeShell suppliers;
     observation = toString observation;
@@ -39,6 +47,8 @@ let
     producerIdentity = purifier.inputIdentity producer;
     producerOutputs = outputs;
     dependencyRoots = lib.unique (lib.concatMap (item: item.declared.allowedRoots) suppliers);
+    dependencyInputPaths = lib.unique (lib.concatMap supplierInputs suppliers);
+    dependencyLibraryRoots = lib.unique (lib.concatMap supplierRoots suppliers);
     allowedRoots = lib.unique ([ (toString source) ] ++ map (item: item.path) outputs ++ sdk.allowedRoots ++ declared.dependencyRoots);
   };
 in
