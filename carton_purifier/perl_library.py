@@ -46,6 +46,10 @@ def payload(root, allowed):
         row = {"path": path.relative_to(root).as_posix(), "mode": stat.S_IMODE(info.st_mode) & ~0o222,
                "sha256": None, "target": None, "resolvedOrigin": str(actual)}
         if stat.S_ISLNK(info.st_mode):
+            # A referent outside this explicit tree would have no direct file
+            # record, so later changes to its bytes/mode could evade replay.
+            if not actual.is_relative_to(root.resolve(strict=True)) or actual.relative_to(root.resolve(strict=True)).parts[0] == ".git":
+                raise ValueError("carton-purifier: link target is not covered by observed library root")
             row.update(type="link", target=os.readlink(path))
         elif stat.S_ISREG(info.st_mode):
             row.update(type="file", sha256=digest(path.read_bytes()))
@@ -65,6 +69,10 @@ def payload(root, allowed):
     for child in sorted(root.iterdir()):
         if child.name != ".git":
             visit(child)
+    recorded_files = {row["resolvedOrigin"] for row in records if row["type"] == "file"}
+    for row in records:
+        if row["type"] == "link" and row["resolvedOrigin"] not in recorded_files:
+            raise ValueError("carton-purifier: link referent has no direct observed file record")
     return records
 
 
@@ -98,8 +106,20 @@ def observe(request):
                for other in resolved[:index]):
             raise ValueError("carton-purifier: overlapping or aliased library roots")
     source_payload = payload(source, allowed)
-    source_module_hashes = {row["sha256"] for row in source_payload
-                            if row["type"] == "file" and row["path"].endswith(".pm")}
+    source_roots = request["sourceRoots"]
+    if set(source_roots) != {str(root) for root in root_paths}:
+        raise ValueError("carton-purifier: source lookup roots must match installed roots")
+    source_lookup_roots = []
+    for lookup_root in source_roots.values():
+        if lookup_root != ".":
+            relative(lookup_root)
+        source_lookup = within(source / lookup_root, [source])
+        if not source_lookup.is_dir():
+            raise ValueError("carton-purifier: source lookup root is not a directory")
+        if any(source_lookup == other or source_lookup.is_relative_to(other) or other.is_relative_to(source_lookup)
+               for other in source_lookup_roots):
+            raise ValueError("carton-purifier: overlapping or aliased source lookup roots")
+        source_lookup_roots.append(source_lookup)
     roots, files, xs_files = [], [], []
     for root in root_paths:
         actual = producer / root
@@ -107,12 +127,14 @@ def observe(request):
         for row in records:
             if row["type"] != "directory" and row["path"].endswith(".pm"):
                 actual_hash = digest((actual / row["path"]).read_bytes())
-                if actual_hash not in source_module_hashes:
-                    raise ValueError("carton-purifier: installed module has no unchanged source payload: " + row["path"])
+                authored = source / source_roots[str(root)] / row["path"]
+                if not authored.is_file() or digest(authored.read_bytes()) != actual_hash:
+                    raise ValueError("carton-purifier: installed module lookup differs from unchanged source payload: " + row["path"])
+                within(authored, [source])
                 files.append({"root": str(root), "path": row["path"], "file": str(actual / row["path"])})
             if row["type"] != "directory" and Path(row["path"]).suffix in {".so", ".dylib", ".dll", ".bundle"}:
                 xs_files.append(str((actual / row["path"]).resolve(strict=True)))
-        roots.append({"path": str(root), "payload": records, "loadableFiles": []})
+        roots.append({"path": str(root), "sourceRoot": source_roots[str(root)], "payload": records, "loadableFiles": []})
     native = inspect(request, files)
     root_map = {row["path"]: row for row in roots}
     packages, lookups = {}, {}
