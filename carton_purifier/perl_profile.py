@@ -99,6 +99,7 @@ def profile(declared):
             'sdkNode': sdk_node,
             'applicationPerl': declared['applicationPerl'], 'applicationSdk': application_sdk,
             'provided': sorted(provided.values(), key=canonical), 'profileIdentity': profile_identity,
+            'moduleLookups': [{'lookup': name, 'input': owner} for name, owner in sorted(lookups.items())],
             'toolVersions': dict(declared['toolVersions'], sdk=profile_identity)}
 
 

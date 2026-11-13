@@ -11,6 +11,7 @@ import tempfile
 from .common import atomic, digest, run
 from .capture import relative
 from .perl_library import canonical, read_json
+from .produced_install import environment, check_collisions
 
 
 def capture_produced(root, companion, snapshot, profile, identity_nix, input_names,
@@ -57,19 +58,8 @@ def capture_produced(root, companion, snapshot, profile, identity_nix, input_nam
         effective = scratch / 'effective.cpanfile'
         binding_path = scratch / 'root-binding.json'
         invocations_path = scratch / 'native-invocations.jsonl'
-        env = {key: value for key, value in os.environ.items()
-               if not key.startswith(('CARTON_PURIFIER_', 'PERL', 'NIX_CFLAGS', 'NIX_LDFLAGS'))
-               and key not in {'CC', 'CXX', 'LD', 'AS', 'AR', 'RANLIB', 'CFLAGS', 'CPPFLAGS',
-                               'CXXFLAGS', 'LDFLAGS', 'CPATH', 'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH',
-                               'LIBRARY_PATH', 'PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR'}}
-        env.update(HOME=str(scratch / 'home'), PERL_CPANM_HOME=str(scratch / 'cpanm'),
-                   PERL_CARTON_PATH=str(project / 'local'), PERL_CARTON_CPANFILE=str(project / 'cpanfile'),
-                   PERL_CARTON_MIRROR=mirror,
-                   CARTON_PURIFIER_NATIVE_CONTEXT=str(invocations_path),
-                   CARTON_PURIFIER_ROOT_BINDING=str(binding_path),
-                   CARTON_PURIFIER_EFFECTIVE_CPANFILE=str(effective),
-                   CARTON_PURIFIER_ROOT_IDENTITY=str(root_identity))
-        Path(env['HOME']).mkdir()
+        env = environment(scratch, project, project / 'local', mirror, root_identity,
+                          binding_path, effective, invocations_path)
         command = [profile / 'bin/carton', 'install']
         for group in groups:
             command.append('--without=' + group)
@@ -83,6 +73,7 @@ def capture_produced(root, companion, snapshot, profile, identity_nix, input_nam
                               stdout=subprocess.PIPE, text=True).stdout)
         if data['formatVersion'] != '1.0':
             raise ValueError('unsupported native Carton snapshot format')
+        check_collisions(verified, project / 'local', data['distributions'])
         entries = []
         for distribution in data['distributions']:
             pathname = distribution['pathname']
