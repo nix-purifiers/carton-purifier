@@ -40,7 +40,10 @@ def project(declared, observation_path, loader):
         raise ValueError('carton-purifier: selected SDK changed during library verification')
 
     own = {'identity': declared['producerIdentity'], 'roots': current['roots'],
-           'packages': current['packages'], 'sdk': current['sdk']}
+           'packages': current['packages'], 'sdk': current['sdk'],
+           'sdkInventory': sdk,
+           'runtimeRequirements': [row['requirements'].get('runtime', {}).get('requires', {})
+                                   for row in current['nativeMetadata']]}
     providers.insert(0, own)
     # Repeated transitive references to the identical original input coalesce;
     # equal package versions or equal bytes under distinct owners never do.
@@ -66,11 +69,7 @@ def project(declared, observation_path, loader):
     for provider in providers:
         if provider['sdk']['baseExecutable'] != current['sdk']['baseExecutable'] or canonical(provider['sdk']['config']) != canonical(current['sdk']['config']):
             raise ValueError('carton-purifier: incompatible supplier Perl SDK')
-        # Retain the caller-selected module environment: accepting a supplier
-        # whose additional SDK modules are absent would silently lose runtime
-        # dependencies when loading with the caller's interpreter.
-        if canonical(provider['sdk']['runtimeInputs']) != canonical(current['sdk']['runtimeInputs']):
-            raise ValueError('carton-purifier: supplier SDK module environment differs')
+        verify_sdk_modules(provider['sdkInventory'], sdk)
         owner = canonical(provider['identity'])
         for root in provider['roots']:
             for row in root['loadableFiles']:
@@ -98,6 +97,15 @@ def project(declared, observation_path, loader):
     catalog['loader'] = loader
     own_roots = [str(Path(declared['producerPath']) / root['path']) for root in current['roots']]
     return catalog, providers, list(dict.fromkeys(own_roots + search_roots))
+
+
+def verify_sdk_modules(required, selected):
+    # Caller SDK extensions are allowed. Every lookup in the producer's
+    # original SDK must still resolve to the same original input and bytes.
+    available = {row['lookup']: row for row in selected['modules']}
+    for row in required['modules']:
+        if canonical(available.get(row['lookup'])) != canonical(row):
+            raise ValueError('carton-purifier: supplier SDK module unavailable or changed: ' + row['lookup'])
 
 
 def build(request_path, output):
