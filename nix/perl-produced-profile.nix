@@ -29,7 +29,7 @@ let
         filter = path: type: baseNameOf path != "__pycache__" && !(lib.hasSuffix ".pyc" path);
       });
     };
-    toolVersions = { carton = nativeCarton.version; perl = perl.version; gcc = gcc.version; };
+    toolVersions = { carton = nativeCarton.version; perl = (applicationPerl.perl or applicationPerl).version; gcc = gcc.version; };
   };
 in
 runCommand "carton-verified-produced-profile" {
