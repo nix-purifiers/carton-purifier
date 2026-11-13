@@ -29,15 +29,7 @@ let
   );
   sdk = import ./perl-library-sdk.nix { inherit lib purifier; } applicationPerl;
   outputs = import ./perl-producer-outputs.nix { inherit lib purifier; } producer;
-  supplier = dependency:
-    assert lib.assertMsg (lib.isDerivation dependency && dependency ? perlLibraryDeclaration) "Carton library dependencies must retain their original projection declarations";
-    {
-      declared = dependency.perlLibraryDeclaration;
-      observation = dependency.perlLibraryDeclaration.observation;
-      catalog = "${dependency}/catalog.json";
-      loader = "${dependency}/bin/perl";
-    };
-  suppliers = map supplier dependencies;
+  suppliers = import ./perl-library-inputs.nix { inherit lib purifier; } dependencies;
   declared = sdk // {
     inherit roots sourceRoots projectorIdentity runtimeShell suppliers;
     observation = toString observation;
@@ -55,7 +47,10 @@ runCommand "carton-perl-installed-library" {
   nativeBuildInputs = [ python3 ];
   requestJSON = builtins.toJSON declared;
   passAsFile = [ "requestJSON" ];
-  passthru.perlLibraryDeclaration = declared;
+  passthru = {
+    perlLibraryDeclaration = declared;
+    originalProducer = producer;
+  };
 } ''
   ${python3}/bin/python3 -B ${tools}/perl_projector.py "$requestJSONPath" "$out"
 ''
