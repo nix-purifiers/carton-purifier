@@ -7,6 +7,7 @@ use CPAN::Meta::Requirements;
 use Carton::Dist::Produced;
 use Carton::Dist::SDK;
 use Carton::Purifier::Requirements;
+use Carton::Purifier::NativeContext;
 use Carton::Snapshot;
 use Menlo::CLI::Compat;
 
@@ -32,6 +33,7 @@ sub trace {
 sub install {
     my ($profile) = @_;
     die "carton-purifier: produced profile already installed\n" if $installed++;
+    Carton::Purifier::NativeContext::install($profile);
     my $providers = $profile->{providers};
     my %ambiguous = map { $_ => 1 } @{$profile->{ambiguousSdkPackages}};
     my @roots = @{$profile->{libraryRoots}};
