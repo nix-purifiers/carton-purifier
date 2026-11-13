@@ -103,6 +103,8 @@ def inspect(request, files, roots):
 
 
 def observe(request):
+    from perl_capture_context import capture
+    capture_context = capture(request)
     source = Path(request["sourcePath"]).resolve(strict=True)
     producer = Path(request["producerPath"]).resolve(strict=True)
     allowed = [Path(path).resolve(strict=True) for path in request["allowedRoots"]]
@@ -221,7 +223,7 @@ def observe(request):
     return {"format": "perl-library-production-v1", "sourceIdentity": request["sourceIdentity"],
             "sourcePayload": source_payload, "producerPath": str(producer), "roots": roots,
             "packages": [packages[name] for name in sorted(packages)], "nativeMetadata": metadata,
-            "sdk": sdk, "dependencies": request["dependencies"], "xsLoads": traces, "moduleMappings": module_mappings}
+            "sdk": sdk, "dependencies": request["dependencies"], "xsLoads": traces, "moduleMappings": module_mappings, "captureContext": capture_context}
 
 
 def verify(request, observation):
