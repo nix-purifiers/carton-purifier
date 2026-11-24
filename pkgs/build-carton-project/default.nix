@@ -16,14 +16,17 @@
   makeWrapper,
   gnutar,
   gzip,
+  callPackage,
 }:
-{
+args@{
   src,
   lockFile ? src + "/carton-purifier.lock.json",
   snapshot ? src + "/cpanfile.snapshot",
   fetchers ? { },
   nativeBuildInputs ? [ ],
   doCheck ? true,
+  dependencies ? [ ],
+  without ? [ ],
   buildCommand ? ''
     if [ -f Makefile.PL ]; then
       perl Makefile.PL INSTALL_BASE="$out"
@@ -67,6 +70,9 @@
     && !(lib.hasPrefix "MYMETA." (baseNameOf path))
     && !(lib.hasSuffix ".log" (baseNameOf path)),
 }:
+if dependencies != [ ] then
+  (callPackage ./build-produced-project.nix { inherit purifier; }) (args // { inherit srcFilter; })
+else
 let
   lock = purifier.checkLock (
     import ../../lib-overlays/default/read-lock.nix { inherit lib; } { inherit src lockFile snapshot; }
